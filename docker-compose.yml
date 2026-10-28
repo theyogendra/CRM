@@ -1,0 +1,94 @@
+# Local dev only needs the data services:  npm run infra:up   (db + redis)
+# The full scalable stack runs with:      npm run stack:up    (open http://localhost:8080)
+#
+#   browser -> web (Nginx) -> api x2 (stateless) -> db (PostgreSQL)
+#                                   \-> redis <- worker (jobs + follow-up schedule)
+
+x-server-env: &server-env
+  DATABASE_URL: postgresql://crm:crm@db:5432/crm?schema=public&connection_limit=5
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dealstack-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: crm
+    ports:
+      - "5433:5432"
+    volumes:
+      - crm-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: dealstack-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # applies the Prisma schema once, before any API replica starts
+  migrate:
+    build: { context: ., target: server }
+    command: ["npx", "prisma", "db", "push", "--skip-generate"]
+    environment: *server-env
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    build: { context: ., target: server }
+    restart: unless-stopped
+    env_file:
+      - path: server/.env
+        required: false
+    environment:
+      <<: *server-env
+      PORT: "4000"
+      TRUST_PROXY: "1"
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      retries: 5
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: server }
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    env_file:
+      - path: server/.env
+        required: false
+    environment: *server-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  crm-data:
+  redis-data:

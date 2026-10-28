@@ -1,0 +1,24 @@
+{
+  "name": "dealstack-crm",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Customers, quotations, proposals, GST invoices, payments, WhatsApp follow-ups, sales dashboard in one platform",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "infra:up": "docker compose up -d db redis",
+    "db:setup": "npm run db:push -w server && npm run db:seed -w server",
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev:full": "concurrently -n api,worker,web -c magenta,yellow,cyan \"npm run dev -w server\" \"npm run dev:worker -w server\" \"npm run dev -w client\"",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down",
+    "build": "npm run build -w server && npm run build -w client",
+    "start": "npm run start -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

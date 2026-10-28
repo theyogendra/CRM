@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("ADMIN") // ADMIN | STAFF — see server/src/lib/permissions.ts
+  createdAt    DateTime @default(now())
+  notificationReads NotificationRead[]
+}
+
+/// Single-row table holding the seller's details printed on every GST document.
+model Company {
+  id              Int     @id @default(1)
+  name            String
+  address         String
+  city            String  @default("")
+  state           String
+  stateCode       String
+  pincode         String  @default("")
+  gstin           String
+  pan             String  @default("")
+  email           String  @default("")
+  phone           String  @default("")
+  bankAccountName String  @default("")
+  bankName        String  @default("")
+  bankAccountNo   String  @default("")
+  bankBranchIfsc  String  @default("")
+  invoicePrefix   String  @default("INV")
+  nextInvoiceNo   Int     @default(1)
+  quotationPrefix String  @default("QT")
+  nextQuotationNo Int     @default(1)
+  proposalPrefix  String  @default("PR")
+  nextProposalNo  Int     @default(1)
+  declaration     String  @default("We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.")
+  remarks         String  @default("")
+  // automatic WhatsApp follow-up settings
+  autoFollowUp        Boolean @default(true)
+  reminderDaysBefore  Int     @default(2)
+  overdueEveryDays    Int     @default(3)
+  quotationFollowDays Int     @default(3)
+  proposalFollowDays  Int     @default(4)
+}
+
+enum CustomerStatus {
+  LEAD
+  ACTIVE
+  INACTIVE
+}
+
+model Customer {
+  id            String         @id @default(cuid())
+  name          String
+  contactPerson String         @default("")
+  email         String         @default("")
+  phone         String         @default("")
+  whatsapp      String         @default("")
+  gstin         String         @default("")
+  address       String         @default("")
+  city          String         @default("")
+  state         String         @default("")
+  stateCode     String         @default("")
+  pincode       String         @default("")
+  shipToSame    Boolean        @default(true)
+  shipAddress   String         @default("")
+  status        CustomerStatus @default(LEAD)
+  source        String         @default("")
+  notes         String         @default("")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  proposals     Proposal[]
+  quotations    Quotation[]
+  invoices      Invoice[]
+  payments      Payment[]
+  messages      Message[]
+  activities    Activity[]
+}
+
+/// Reusable catalog item (products & services). Documents copy its details into their own
+/// LineItem rows, so later edits or archiving here never change issued documents.
+model Product {
+  id          String    @id @default(cuid())
+  sku         String    @default("")
+  name        String
+  description String    @default("")
+  hsn         String    @default("")
+  unit        String    @default("nos")
+  rate        Float
+  gstRate     Float     @default(18)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lineItems   LineItem[]
+}
+
+model Notification {
+  id         String             @id @default(cuid())
+  type       String
+  title      String
+  message    String
+  link       String             @default("")
+  entityType String             @default("")
+  entityId   String             @default("")
+  /// unique key so the same business event never creates two notifications
+  dedupeKey  String             @unique
+  createdAt  DateTime           @default(now())
+  reads      NotificationRead[]
+}
+
+model NotificationRead {
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@id([userId, notificationId])
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model Proposal {
+  id           String         @id @default(cuid())
+  number       String         @unique
+  title        String
+  customerId   String
+  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  value        Float          @default(0) // = server-calculated total when line items exist
+  status       ProposalStatus @default(DRAFT)
+  validUntil   DateTime?
+  content      String         @default("")
+  isInterState Boolean        @default(false)
+  subtotal     Float          @default(0)
+  taxable      Float          @default(0)
+  cgst         Float          @default(0)
+  sgst         Float          @default(0)
+  igst         Float          @default(0)
+  roundOff     Float          @default(0)
+  items        LineItem[]
+  lastFollowUp DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+model Quotation {
+  id             String          @id @default(cuid())
+  number         String          @unique
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  date           DateTime        @default(now())
+  validUntil     DateTime?
+  status         QuotationStatus @default(DRAFT)
+  freight        Float           @default(0)
+  freightGstRate Float           @default(0)
+  notes          String          @default("")
+  isInterState   Boolean         @default(false)
+  subtotal       Float           @default(0)
+  taxable        Float           @default(0)
+  cgst           Float           @default(0)
+  sgst           Float           @default(0)
+  igst           Float           @default(0)
+  roundOff       Float           @default(0)
+  total          Float           @default(0)
+  lastFollowUp   DateTime?
+  items          LineItem[]
+  invoice        Invoice?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  number            String        @unique
+  customerId        String
+  customer          Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  quotationId       String?       @unique
+  quotation         Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  date              DateTime      @default(now())
+  dueDate           DateTime?
+  status            InvoiceStatus @default(UNPAID)
+  deliveryNote      String        @default("")
+  buyerOrderNo      String        @default("")
+  dispatchDocNo     String        @default("")
+  dispatchedThrough String        @default("")
+  destination       String        @default("")
+  paymentTerms      String        @default("")
+  freight           Float         @default(0)
+  freightGstRate    Float         @default(0)
+  notes             String        @default("")
+  isInterState      Boolean       @default(false)
+  subtotal          Float         @default(0)
+  taxable           Float         @default(0)
+  cgst              Float         @default(0)
+  sgst              Float         @default(0)
+  igst              Float         @default(0)
+  roundOff          Float         @default(0)
+  total             Float         @default(0)
+  amountPaid        Float         @default(0)
+  lastReminder      DateTime?
+  items             LineItem[]
+  payments          Payment[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+/// A line on a quotation, proposal or invoice. All item fields are a snapshot taken when the
+/// document was saved; productId only records where the line came from (it is cleared if the
+/// catalog row is ever removed) and is never used to re-price a saved document.
+model LineItem {
+  id          String     @id @default(cuid())
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  invoiceId   String?
+  invoice     Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  proposalId  String?
+  proposal    Proposal?  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  position    Int        @default(0)
+  sku         String     @default("")
+  description String
+  hsn         String     @default("")
+  quantity    Float
+  unit        String     @default("nos")
+  rate        Float
+  discount    Float      @default(0)
+  gstRate     Float      @default(18)
+  amount      Float
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  invoiceId  String
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount     Float
+  date       DateTime @default(now())
+  mode       String   @default("UPI")
+  reference  String   @default("")
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+}
+
+model MessageTemplate {
+  id   String @id @default(cuid())
+  key  String @unique
+  name String
+  body String
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  to          String
+  body        String
+  kind        String    @default("MANUAL")
+  status      String    @default("QUEUED")
+  link        String    @default("")
+  error       String    @default("")
+  relatedType String    @default("")
+  relatedId   String    @default("")
+  automatic   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+model Activity {
+  id         String    @id @default(cuid())
+  type       String
+  text       String
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+}
