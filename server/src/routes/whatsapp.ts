@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { logActivity, prisma } from '../lib/db';
+import { requirePermission } from '../lib/auth';
 import { HttpError } from '../lib/http';
 import { withLock } from '../lib/redis';
 import { runFollowUps } from '../services/followups';
@@ -27,7 +28,7 @@ router.get('/messages', async (req, res) => {
   );
 });
 
-router.post('/send', async (req, res) => {
+router.post('/send', requirePermission('documents:write'), async (req, res) => {
   const body = z
     .object({ customerId: z.string().optional(), to: z.string().optional(), body: z.string().min(1) })
     .parse(req.body);
@@ -45,13 +46,13 @@ router.get('/templates', async (_req, res) => {
   res.json(await prisma.messageTemplate.findMany({ orderBy: { name: 'asc' } }));
 });
 
-router.put('/templates/:id', async (req, res) => {
+router.put('/templates/:id', requirePermission('settings:manage'), async (req, res) => {
   const { body } = z.object({ body: z.string().min(1) }).parse(req.body);
   res.json(await prisma.messageTemplate.update({ where: { id: req.params.id }, data: { body } }));
 });
 
 /** Runs the automatic follow-up engine immediately (it also runs on the cron schedule). */
-router.post('/run-followups', async (_req, res) => {
+router.post('/run-followups', requirePermission('documents:write'), async (_req, res) => {
   const summary = await withLock('followups', 10 * 60_000, () => runFollowUps());
   if (!summary) throw new HttpError(409, 'Follow-ups are already running, try again in a minute');
   res.json(summary);

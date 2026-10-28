@@ -126,7 +126,7 @@ router.put('/:id', requirePermission('documents:write'), async (req, res) => {
   res.json(inv);
 });
 
-router.post('/:id/send', async (req, res) => {
+router.post('/:id/send', requirePermission('documents:write'), async (req, res) => {
   const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: req.params.id }, include: { customer: true } });
   const company = await getCompany();
   const body =

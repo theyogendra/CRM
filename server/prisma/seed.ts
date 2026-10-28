@@ -2,6 +2,16 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { computeTotals, financialYear } from '../src/lib/gst';
 
+// The seed deletes every table before loading demo data. Refuse anything that is not a local database,
+// unless the operator explicitly opts in with ALLOW_SEED_NON_LOCAL=yes.
+const dbHost = new URL(process.env.DATABASE_URL ?? 'postgresql://localhost/crm').hostname;
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', 'db'];
+if ((process.env.NODE_ENV === 'production' || !LOCAL_HOSTS.includes(dbHost)) && process.env.ALLOW_SEED_NON_LOCAL !== 'yes') {
+  console.error(`Refusing to seed: DATABASE_URL points at "${dbHost}" which is not a local database. ` +
+    'The seed erases all data. Set ALLOW_SEED_NON_LOCAL=yes only if you are sure this is a disposable database.');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
 

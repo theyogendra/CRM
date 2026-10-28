@@ -1,10 +1,12 @@
 import 'dotenv/config';
 import { createApp } from './app';
+import { assertJwtSecret } from './lib/auth';
 import { prisma } from './lib/db';
 import { closeQueue } from './lib/queue';
 import { closeRedis, getRedis } from './lib/redis';
 import { startFollowUpScheduler } from './services/followups';
 
+assertJwtSecret(); // fail fast on an unsafe production configuration
 const app = createApp();
 
 const port = Number(process.env.PORT ?? 4000);

@@ -49,7 +49,7 @@ router.post('/', requirePermission('payments:write'), async (req, res) => {
   res.status(201).json(payment);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission('payments:write'), async (req, res) => {
   const p = await prisma.payment.delete({ where: { id: req.params.id } });
   await syncInvoicePayments(p.invoiceId);
   res.status(204).end();

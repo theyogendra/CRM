@@ -3,6 +3,17 @@ import jwt from 'jsonwebtoken';
 import { prisma } from './db';
 import { hasPermission, permissionsFor, type Permission } from './permissions';
 
+const PLACEHOLDER = 'change-me';
+
+/** In production the signing key must be set to a real value; the app refuses to start otherwise. */
+export function assertJwtSecret() {
+  if (process.env.NODE_ENV !== 'production') return;
+  const value = process.env.JWT_SECRET ?? '';
+  if (value.length < 32 || value.startsWith(PLACEHOLDER)) {
+    throw new Error('JWT_SECRET must be set to a random value of at least 32 characters in production');
+  }
+}
+
 const secret = () => process.env.JWT_SECRET || 'dev-secret';
 
 export interface AuthUser {

@@ -26,7 +26,8 @@ export function createApp() {
   const app = express();
   // behind Nginx: trust X-Forwarded-For so rate limits see the real client IP
   if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
-  app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') ?? true }));
+  // only the configured front end may call the API from a browser (defaults to the local dev client)
+  app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') ?? ['http://localhost:5173'] }));
   app.use(express.json({ limit: '2mb' }));
 
   // liveness: the process is up. instance shows which replica answered.

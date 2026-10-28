@@ -101,7 +101,7 @@ router.patch('/:id/status', requirePermission('documents:write'), async (req, re
   res.json(q);
 });
 
-router.post('/:id/send', async (req, res) => {
+router.post('/:id/send', requirePermission('documents:write'), async (req, res) => {
   const q = await prisma.quotation.findUniqueOrThrow({ where: { id: req.params.id }, include: { customer: true } });
   const company = await getCompany();
   const body =
@@ -121,7 +121,7 @@ router.post('/:id/send', async (req, res) => {
 });
 
 /** Converts an accepted quotation into a GST tax invoice, copying all line items. */
-router.post('/:id/convert', async (req, res) => {
+router.post('/:id/convert', requirePermission('documents:write'), async (req, res) => {
   const q = await prisma.quotation.findUniqueOrThrow({ where: { id: req.params.id }, include: { items: true, invoice: true } });
   if (q.invoice) throw new HttpError(409, `Already converted to ${q.invoice.number}`);
   const dueDays = Number(req.body?.dueDays ?? 15);
@@ -155,7 +155,12 @@ router.post('/:id/convert', async (req, res) => {
   res.status(201).json(inv);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission('documents:write'), async (req, res) => {
+  const current = await prisma.quotation.findUniqueOrThrow({ where: { id: req.params.id }, select: { status: true, number: true } });
+  // accepted or converted quotations are commercial records and must stay on file
+  if (LOCKED_QUOTATION.includes(current.status as 'ACCEPTED')) {
+    throw new HttpError(409, `Quotation ${current.number} is ${current.status.toLowerCase()} and cannot be deleted`);
+  }
   await prisma.quotation.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });

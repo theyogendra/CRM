@@ -7,7 +7,7 @@
 x-server-env: &server-env
   DATABASE_URL: postgresql://crm:crm@db:5432/crm?schema=public&connection_limit=5
   REDIS_URL: redis://redis:6379
-  JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before starting the stack}
 
 services:
   db:
