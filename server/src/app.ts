@@ -82,4 +82,7 @@ export function createApp() {
   return app;
 }
 
-// Vercel loads this module as the API entry point and needs a default export\nexport default createApp();
+// Vercel's Express runtime reads the CommonJS module object, so the app itself must be module.exports.
+// createApp stays a named export for the tests.
+const vercelApp = createApp();
+module.exports = Object.assign(vercelApp, { createApp });
