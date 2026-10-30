@@ -95,6 +95,10 @@ router.put('/:id', requirePermission('documents:write'), async (req, res) => {
 
 router.patch('/:id/status', requirePermission('documents:write'), async (req, res) => {
   const { status } = z.object({ status: z.enum(['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED']) }).parse(req.body);
+  const current = await prisma.quotation.findUniqueOrThrow({ where: { id: req.params.id }, select: { status: true, number: true } });
+  if (LOCKED_QUOTATION.includes(current.status as 'ACCEPTED') && status !== current.status) {
+    throw new HttpError(409, `Quotation ${current.number} is ${current.status.toLowerCase()} and its status cannot change`);
+  }
   const q = await prisma.quotation.update({ where: { id: req.params.id }, data: { status } });
   await logActivity('quotation', `Quotation ${q.number} marked ${status}`, q.customerId);
   if (status === 'ACCEPTED' || status === 'REJECTED') await notifyQuotationStatus(q, status);
@@ -124,6 +128,9 @@ router.post('/:id/send', requirePermission('documents:write'), async (req, res) 
 router.post('/:id/convert', requirePermission('documents:write'), async (req, res) => {
   const q = await prisma.quotation.findUniqueOrThrow({ where: { id: req.params.id }, include: { items: true, invoice: true } });
   if (q.invoice) throw new HttpError(409, `Already converted to ${q.invoice.number}`);
+  if (q.status === 'REJECTED' || q.status === 'EXPIRED') {
+    throw new HttpError(409, `A ${q.status.toLowerCase()} quotation cannot be converted to an invoice`);
+  }
   const dueDays = Number(req.body?.dueDays ?? 15);
   const inv = await prisma.invoice.create({
     data: {

@@ -40,7 +40,8 @@ export async function priceDocument(customerId: string, items: z.infer<typeof it
   ]);
   if (!customer) throw new HttpError(400, 'Customer not found');
   const buyer = stateCodeOf(customer);
-  const isInterState = Boolean(buyer && company.stateCode && buyer !== company.stateCode);
+  if (!buyer) throw new HttpError(400, "Set the customer's state (place of supply) before issuing a GST document");
+  const isInterState = Boolean(company.stateCode && buyer !== company.stateCode);
   const resolved = await resolveItems(items);
   const t = computeTotals(resolved, { freight, freightGstRate, isInterState });
   return {

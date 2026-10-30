@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requirePermission } from '../lib/auth';
+import { HttpError } from '../lib/http';
 import { logActivity, prisma } from '../lib/db';
 
 const router = Router();
@@ -84,6 +85,15 @@ router.put('/:id', requirePermission('customers:write'), async (req, res) => {
 });
 
 router.delete('/:id', requirePermission('customers:write'), async (req, res) => {
+  // a customer with invoices, quotations or payments is part of the GST record and must not be erased
+  const found = await prisma.customer.findUniqueOrThrow({
+    where: { id: req.params.id },
+    select: { _count: { select: { invoices: true, quotations: true, payments: true } } },
+  });
+  const c = found._count;
+  if (c.invoices + c.quotations + c.payments > 0) {
+    throw new HttpError(409, 'This customer has invoices, quotations or payments on record and cannot be deleted');
+  }
   await prisma.customer.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });

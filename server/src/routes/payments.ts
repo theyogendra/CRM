@@ -8,6 +8,18 @@ import { inr } from '../services/followups';
 import { notifyInvoicePaid, notifyPaymentReceived } from '../services/notifications';
 import { requirePermission } from '../lib/auth';
 
+/** A serializable transaction that loses a write race fails with P2034; retrying lets it see the other payment. */
+async function retryOnConflict<T>(run: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2034' && attempt < attempts) continue;
+      throw e;
+    }
+  }
+}
+
 const router = Router();
 
 const schema = z.object({
@@ -32,12 +44,19 @@ router.get('/', async (_req, res) => {
 router.post('/', requirePermission('payments:write'), async (req, res) => {
   const { sendThanks, date, ...body } = schema.parse(req.body);
   const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: body.invoiceId }, include: { customer: true } });
-  const balance = Math.round((inv.total - inv.amountPaid) * 100) / 100;
-  if (body.amount > balance + 0.009) throw new HttpError(400, `Amount exceeds balance of ${inr(balance)}`);
-
-  const payment = await prisma.payment.create({
-    data: { ...body, date: toDate(date) ?? new Date(), customerId: inv.customerId },
-  });
+  if (inv.status === 'DRAFT' || inv.status === 'CANCELLED') {
+    throw new HttpError(409, `Invoice ${inv.number} is ${inv.status.toLowerCase()} and cannot take payments`);
+  }
+  // the balance check and the insert run in one serializable transaction, so two payments at once cannot overpay
+  const { payment, balance } = await retryOnConflict(() => prisma.$transaction(async (tx) => {
+    const paid = await tx.payment.aggregate({ where: { invoiceId: inv.id }, _sum: { amount: true } });
+    const due = Math.round((inv.total - (paid._sum.amount ?? 0)) * 100) / 100;
+    if (body.amount > due + 0.009) throw new HttpError(400, `Amount exceeds balance of ${inr(due)}`);
+    const created = await tx.payment.create({
+      data: { ...body, date: toDate(date) ?? new Date(), customerId: inv.customerId },
+    });
+    return { payment: created, balance: due };
+  }, { isolationLevel: 'Serializable' }));
   await syncInvoicePayments(inv.id);
   await logActivity('payment', `Payment of ${inr(payment.amount)} received against ${inv.number}`, inv.customerId);
   await notifyPaymentReceived(payment, inv);
