@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm
+          POSTGRES_DB: crm_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U crm -d crm_test"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://crm:crm@localhost:5432/crm_test?schema=public
+      TEST_DATABASE_URL: postgresql://crm:crm@localhost:5432/crm_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema server/prisma/schema.prisma
+      - name: Typecheck
+        run: |
+          npx tsc --noEmit -p server/tsconfig.json
+          npx tsc --noEmit -p client/tsconfig.json
+      - name: Apply migrations to the test database
+        run: npx prisma migrate deploy --schema server/prisma/schema.prisma
+      - name: Server tests
+        run: npm test -w server
+      - name: Client tests
+        run: npm test -w client
+      - name: Client build
+        run: npm run build -w client

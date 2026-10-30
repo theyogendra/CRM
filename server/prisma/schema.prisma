@@ -16,6 +16,8 @@ model User {
   passwordHash String
   role         String   @default("ADMIN") // ADMIN | STAFF — see server/src/lib/permissions.ts
   createdAt    DateTime @default(now())
+  /** tokens issued before this moment are rejected (set when the password changes) */
+  passwordChangedAt DateTime?
   notificationReads NotificationRead[]
 }
 

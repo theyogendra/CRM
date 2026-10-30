@@ -24,6 +24,14 @@ import whatsapp from './routes/whatsapp';
 /** Builds the Express app without starting a listener, so tests can drive it directly. */
 export function createApp() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
   // behind Nginx: trust X-Forwarded-For so rate limits see the real client IP
   if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
   // only the configured front end may call the API from a browser (defaults to the local dev client)

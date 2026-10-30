@@ -48,7 +48,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const header = req.headers.authorization ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   try {
-    const { sub } = jwt.verify(token, secret()) as { sub: string };
+    const { sub, iat } = jwt.verify(token, secret()) as { sub: string; iat: number };
+    const row = await prisma.user.findUnique({ where: { id: sub }, select: { passwordChangedAt: true } });
+    // a password change signs out every session issued before it (compared in whole seconds, as iat is)
+    if (row?.passwordChangedAt && iat < Math.floor(row.passwordChangedAt.getTime() / 1000)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const user = await loadUser(sub);
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' });

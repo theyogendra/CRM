@@ -40,7 +40,10 @@ router.post('/change-password', requireAuth, async (req, res) => {
     throw new HttpError(400, 'Your current password is incorrect');
   }
   if (body.newPassword === body.currentPassword) throw new HttpError(400, 'Choose a password different from the current one');
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(body.newPassword, 10) } });
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await bcrypt.hash(body.newPassword, 10), passwordChangedAt: new Date() },
+  });
   res.json({ ok: true });
 });
 
