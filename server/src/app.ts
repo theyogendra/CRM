@@ -81,3 +81,5 @@ export function createApp() {
   app.use(errorHandler);
   return app;
 }
+
+// Vercel loads this module as the API entry point and needs a default export\nexport default createApp();
